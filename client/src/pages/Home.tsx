@@ -64,7 +64,7 @@ export default function Home() {
             </Button>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <main className="container py-16">
         <motion.div 
