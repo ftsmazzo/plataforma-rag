@@ -1,0 +1,21 @@
+{
+  "query": "SELECT * FROM knowledge_bases",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3Z2xfqxX78EXkQD.root --database jEmfNUXyx8HPzkbK4tmeAP --execute SELECT * FROM knowledge_bases",
+  "rows": [
+    {
+      "id": "30001",
+      "name": "BaseRag",
+      "description": "Uma Base Teste",
+      "userId": "1",
+      "organizationId": "1",
+      "isActive": "1",
+      "createdAt": "2025-12-08 01:15:52",
+      "updatedAt": "2025-12-08 01:18:22",
+      "webhookUrl": "https://fabricaia-n8n.90qhxz.easypanel.host/webhook/rag"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tdescription\tuserId\torganizationId\tisActive\tcreatedAt\tupdatedAt\twebhookUrl\n30001\tBaseRag\tUma Base Teste\t1\t1\t1\t2025-12-08 01:15:52\t2025-12-08 01:18:22\thttps://fabricaia-n8n.90qhxz.easypanel.host/webhook/rag\n",
+  "stderr": "",
+  "execution_time_ms": 82
+}

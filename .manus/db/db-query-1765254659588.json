@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE users SET organizationId = 1 WHERE organizationId IS NULL OR organizationId != 1",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3Z2xfqxX78EXkQD.root --database jEmfNUXyx8HPzkbK4tmeAP --execute UPDATE users SET organizationId = 1 WHERE organizationId IS NULL OR organizationId != 1",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 59
+}

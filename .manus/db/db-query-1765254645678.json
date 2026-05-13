@@ -1,0 +1,50 @@
+{
+  "query": "SELECT id, name, email, organizationId, role, createdAt FROM users ORDER BY id",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3Z2xfqxX78EXkQD.root --database jEmfNUXyx8HPzkbK4tmeAP --execute SELECT id, name, email, organizationId, role, createdAt FROM users ORDER BY id",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Frederico Tadeu Sedassari Mazzo",
+      "email": "fredmazzo@gmail.com",
+      "organizationId": "1",
+      "role": "admin",
+      "createdAt": "2025-12-07 15:09:49"
+    },
+    {
+      "id": "660007",
+      "name": "Hudson Souza",
+      "email": "hudsonmsouza92@gmail.com",
+      "organizationId": "NULL",
+      "role": "user",
+      "createdAt": "2025-12-08 01:11:31"
+    },
+    {
+      "id": "810001",
+      "name": "Frederico Tadeu Sedassari Mazzo",
+      "email": "fredmazzo@icloud.com",
+      "organizationId": "NULL",
+      "role": "user",
+      "createdAt": "2025-12-08 10:52:48"
+    },
+    {
+      "id": "1440012",
+      "name": "Pcd Garagem",
+      "email": "pcdgaragem@gmail.com",
+      "organizationId": "NULL",
+      "role": "user",
+      "createdAt": "2025-12-08 21:19:56"
+    },
+    {
+      "id": "1890032",
+      "name": "Frederico Tadeu Sedassari Mazzo",
+      "email": "fredericosmazzo@gmail.com",
+      "organizationId": "NULL",
+      "role": "user",
+      "createdAt": "2025-12-09 04:09:24"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\torganizationId\trole\tcreatedAt\n1\tFrederico Tadeu Sedassari Mazzo\tfredmazzo@gmail.com\t1\tadmin\t2025-12-07 15:09:49\n660007\tHudson Souza\thudsonmsouza92@gmail.com\tNULL\tuser\t2025-12-08 01:11:31\n810001\tFrederico Tadeu Sedassari Mazzo\tfredmazzo@icloud.com\tNULL\tuser\t2025-12-08 10:52:48\n1440012\tPcd Garagem\tpcdgaragem@gmail.com\tNULL\tuser\t2025-12-08 21:19:56\n1890032\tFrederico Tadeu Sedassari Mazzo\tfredericosmazzo@gmail.com\tNULL\tuser\t2025-12-09 04:09:24\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

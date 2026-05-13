@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, filename, SUBSTRING(errorMessage, 1, 500) as error_preview, createdAt FROM documents WHERE status = 'failed' ORDER BY createdAt DESC LIMIT 1",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3Z2xfqxX78EXkQD.root --database jEmfNUXyx8HPzkbK4tmeAP --execute SELECT id, filename, SUBSTRING(errorMessage, 1, 500) as error_preview, createdAt FROM documents WHERE status = 'failed' ORDER BY createdAt DESC LIMIT 1",
+  "rows": [
+    {
+      "id": "690005",
+      "filename": "C6_Ek_eHeCHpAHoZPw4fU.pdf",
+      "error_preview": "URI malformed",
+      "createdAt": "2025-12-09 15:06:28"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfilename\terror_preview\tcreatedAt\n690005\tC6_Ek_eHeCHpAHoZPw4fU.pdf\tURI malformed\t2025-12-09 15:06:28\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

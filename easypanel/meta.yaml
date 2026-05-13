@@ -1,0 +1,108 @@
+name: RAG Knowledge Base
+description: |
+  RAG Knowledge Base é uma plataforma completa de Retrieval-Augmented Generation
+  para gerenciar bases de conhecimento com documentos e busca semântica. O sistema
+  permite upload de múltiplos tipos de arquivos (PDF, Excel, imagens, TXT), processa
+  automaticamente o conteúdo extraindo texto e gerando embeddings semânticos com
+  OpenAI, armazena arquivos no MinIO e oferece busca inteligente por similaridade
+  vetorial usando PostgreSQL com pgvector.
+
+  Funcionalidades principais incluem autenticação JWT, upload com drag-and-drop,
+  processamento automático de documentos com OCR, chunking inteligente, geração de
+  embeddings, dashboard de documentos, edição de metadados com tags personalizadas,
+  geração automática de tags com IA, e busca semântica com resultados ranqueados.
+
+instructions: |
+  1. Configure as variáveis de ambiente obrigatórias: OPENAI_API_KEY
+  2. O banco PostgreSQL com pgvector será criado automaticamente
+  3. O MinIO será configurado automaticamente para armazenamento de arquivos
+  4. As migrações do banco serão executadas automaticamente na inicialização
+  5. Acesse a aplicação e crie uma conta ou faça login
+  6. Comece fazendo upload de documentos na página "Upload de Documentos"
+  7. Os documentos serão processados automaticamente e ficarão disponíveis para busca semântica
+
+changelog:
+  - date: 2025-12-07
+    description: Versão inicial com upload, processamento, embeddings e busca semântica
+  - date: 2025-12-07
+    description: Adicionada edição de metadados com tags e descrições
+  - date: 2025-12-07
+    description: Implementada geração automática de tags com IA
+
+links:
+  - label: GitHub
+    url: https://github.com/easypanel-io/templates
+  - label: OpenAI API
+    url: https://platform.openai.com/docs/api-reference
+
+contributors:
+  - name: RAG Knowledge Base Team
+    url: https://github.com/ftsmazzo/sistema-rag
+
+schema:
+  type: object
+  required:
+    - appServiceName
+    - appServiceImage
+    - databaseServiceName
+  properties:
+    appServiceName:
+      type: string
+      title: App Service Name
+      default: rag-knowledge-base
+    appServiceImage:
+      type: string
+      title: App Docker Image
+      default: rag-knowledge-base:latest
+    databaseServiceName:
+      type: string
+      title: Database Service Name
+      default: rag-postgres
+    minioAccessKey:
+      type: string
+      title: MinIO Access Key
+      default: minioadmin
+    minioSecretKey:
+      type: string
+      title: MinIO Secret Key
+      description: Leave empty to generate automatically
+    openaiApiKey:
+      type: string
+      title: OpenAI API Key
+      description: Your OpenAI API key for generating embeddings
+
+benefits:
+  - title: Busca Semântica Inteligente
+    description: |
+      Encontre informações relevantes usando busca por similaridade vetorial
+      com embeddings OpenAI, não apenas palavras-chave.
+  - title: Processamento Automático
+    description: |
+      Upload de PDFs, planilhas, imagens e textos com extração automática
+      de conteúdo, OCR e chunking inteligente.
+  - title: Geração de Tags com IA
+    description: |
+      Tags relevantes geradas automaticamente usando LLM para organizar
+      e categorizar documentos de forma inteligente.
+  - title: Isolamento de Dados
+    description: |
+      Cada usuário tem sua própria base de conhecimento isolada com
+      autenticação segura via OAuth.
+
+features:
+  - title: Upload Multi-formato
+    description: |
+      Suporte para PDF, Excel, CSV, imagens (PNG/JPG) e arquivos de texto
+      com interface drag-and-drop intuitiva.
+  - title: Dashboard Completo
+    description: |
+      Visualize todos os documentos processados, status, metadados, chunks
+      e estatísticas de uso em tempo real.
+  - title: Edição de Metadados
+    description: |
+      Adicione tags personalizadas e descrições aos documentos para melhor
+      organização e busca.
+  - title: API de Busca RAG
+    description: |
+      Endpoint de busca semântica que retorna chunks relevantes ranqueados
+      por score de similaridade para integração com LLMs.

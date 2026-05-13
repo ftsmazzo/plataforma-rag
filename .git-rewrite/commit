@@ -1,0 +1,15 @@
+tree 8c62a80d0c9229baf7307ebab1349b358ab4ab68
+parent bdd74404d65eaa6826b6756d867c3cddbae20158
+author Manus Sandbox <sandbox@manus.ai> 1765973247 -0500
+committer Manus Sandbox <sandbox@manus.ai> 1765973247 -0500
+
+feat: Add complete database schema SQL file
+
+- Created database-schema.sql with all table definitions
+- Includes organizations, knowledge_bases, users, documents
+- Includes document_chunks, embeddings, document_versions
+- Includes feedback, notifications, api_keys, api_logs
+- Includes system_settings for LLM provider configuration
+- Added detailed comments in Portuguese
+- Includes initial data (default organization)
+- Ready for MySQL/MariaDB deployment

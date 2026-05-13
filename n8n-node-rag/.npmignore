@@ -1,0 +1,15 @@
+node_modules/
+src/
+*.ts
+!*.d.ts
+tsconfig.json
+gulpfile.js
+.gitignore
+README.md
+INSTALACAO_RAPIDA.md
+TESTE_RAPIDO.md
+VERIFICAR_INSTALACAO.md
+*.log
+.DS_Store
+.env
+package-lock.json

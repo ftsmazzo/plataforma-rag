@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1765118935935,
+      "tag": "0000_tidy_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1765119137678,
+      "tag": "0001_flat_wrecking_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1765120666959,
+      "tag": "0002_curious_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1765126467798,
+      "tag": "0003_black_madripoor",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1765129539647,
+      "tag": "0004_married_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1765141617512,
+      "tag": "0005_steady_scarecrow",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1765145954477,
+      "tag": "0006_optimal_azazel",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1765148246296,
+      "tag": "0007_damp_killer_shrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1765150713335,
+      "tag": "0008_lying_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1765152283807,
+      "tag": "0009_parallel_wallow",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1765239664989,
+      "tag": "0010_loving_cable",
+      "breakpoints": true
+    }
+  ]
+}

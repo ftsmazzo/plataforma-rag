@@ -1,0 +1,20 @@
+{
+  "query": "SELECT id, filename, originalFilename, s3Key, s3Url, status, errorMessage, createdAt FROM documents WHERE status = 'failed' ORDER BY createdAt DESC LIMIT 1",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3Z2xfqxX78EXkQD.root --database jEmfNUXyx8HPzkbK4tmeAP --execute SELECT id, filename, originalFilename, s3Key, s3Url, status, errorMessage, createdAt FROM documents WHERE status = 'failed' ORDER BY createdAt DESC LIMIT 1",
+  "rows": [
+    {
+      "id": "690003",
+      "filename": "hSF6JFOIF5T2-SDOGaR8r.pdf",
+      "originalFilename": "PNAS-NOB-SUAS.pdf",
+      "s3Key": "1/documents/D4Oi-SBqdfutOX_CmSJnB.pdf",
+      "s3Url": "https://d2xsxph8kpxj0f.cloudfront.net/310419663028645021/jEmfNUXyx8HPzkbK4tmeAP/1/documents/D4Oi-SBqdfutOX_CmSJnB.pdf",
+      "status": "failed",
+      "errorMessage": "URI malformed",
+      "createdAt": "2025-12-09 15:00:31"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfilename\toriginalFilename\ts3Key\ts3Url\tstatus\terrorMessage\tcreatedAt\n690003\thSF6JFOIF5T2-SDOGaR8r.pdf\tPNAS-NOB-SUAS.pdf\t1/documents/D4Oi-SBqdfutOX_CmSJnB.pdf\thttps://d2xsxph8kpxj0f.cloudfront.net/310419663028645021/jEmfNUXyx8HPzkbK4tmeAP/1/documents/D4Oi-SBqdfutOX_CmSJnB.pdf\tfailed\tURI malformed\t2025-12-09 15:00:31\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}
