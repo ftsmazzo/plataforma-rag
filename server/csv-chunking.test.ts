@@ -1,99 +1,150 @@
 import { describe, it, expect } from "vitest";
-import { chunkText, generateEmbedding } from "./documentProcessor";
+import {
+  chunkSpreadsheet,
+  chunkText,
+  formatSpreadsheetRowChunk,
+  generateEmbedding,
+  isValidChunkContent,
+  parseDelimitedLine,
+} from "./documentProcessor";
 
-describe("CSV Chunking and Embedding Limits", () => {
-  it("should chunk large CSV into multiple small chunks", () => {
-    // Simulate a CSV with 100 rows
-    const csvHeader = "id,nome,endereco,cidade,estado,cep,telefone,email";
-    const csvRows = Array.from({ length: 100 }, (_, i) => 
-      `${i + 1},Escola ${i + 1},Rua ${i + 1},Cidade ${i + 1},SP,12345-678,11-9999-${i},escola${i}@example.com`
+describe("Spreadsheet row chunking", () => {
+  it("should create one chunk per data row", () => {
+    const csvHeader = "id,nome,endereco,cidade";
+    const csvRows = Array.from(
+      { length: 100 },
+      (_, i) => `${i + 1},Escola ${i + 1},Rua ${i + 1},Cidade ${i + 1}`
     );
     const csvContent = [csvHeader, ...csvRows].join("\n");
 
-    const chunks = chunkText(csvContent, 500, 50);
+    const chunks = chunkSpreadsheet(csvContent);
 
-    // Should create multiple chunks instead of one huge chunk
-    expect(chunks.length).toBeGreaterThan(5);
-    
-    // Each chunk should be reasonably sized (not exceeding max tokens significantly)
-    chunks.forEach(chunk => {
-      expect(chunk.tokenCount).toBeLessThan(600); // Allow small overflow
+    expect(chunks.length).toBe(100);
+    chunks.forEach((chunk) => {
+      expect(chunk.metadata.chunkType).toBe("spreadsheet_row");
+      expect(chunk.content).toContain("nome:");
+      expect(chunk.content).toContain("Linha:");
     });
   });
 
-  it("should handle very large CSV (400+ rows)", () => {
-    // Simulate a CSV with 452 rows (like the user's file)
-    const csvHeader = "id,nome,endereco,cidade,estado,cep,telefone,email,observacoes";
-    const csvRows = Array.from({ length: 452 }, (_, i) => 
-      `${i + 1},Unidade ${i + 1},Rua Exemplo ${i + 1} n ${i * 10},Cidade ${i % 50},SP,${10000 + i}-000,11-${9000 + i}-0000,contato${i}@example.com,Observações da unidade ${i + 1}`
+  it("should handle large CSV with one chunk per row", () => {
+    const csvHeader = "id,nome,endereco,cidade,estado";
+    const csvRows = Array.from(
+      { length: 452 },
+      (_, i) => `${i + 1},Unidade ${i + 1},Rua ${i + 1},Cidade ${i % 50},SP`
     );
     const csvContent = [csvHeader, ...csvRows].join("\n");
 
-    const chunks = chunkText(csvContent, 500, 50);
+    const chunks = chunkSpreadsheet(csvContent);
 
-    // Should create many chunks
-    expect(chunks.length).toBeGreaterThan(20);
-    
-    // No chunk should be excessively large
-    chunks.forEach(chunk => {
-      expect(chunk.tokenCount).toBeLessThan(700);
-      // Verify content is not empty
-      expect(chunk.content.length).toBeGreaterThan(0);
-    });
+    expect(chunks.length).toBe(452);
+    expect(chunks.every((c) => isValidChunkContent(c.content))).toBe(true);
   });
 
-  it("should truncate very long text for embeddings", async () => {
-    // Create a text that would exceed the embedding limit
-    const veryLongText = "Lorem ipsum dolor sit amet. ".repeat(2000); // ~56,000 characters
-    
-    // This should not throw an error due to truncation
-    const embedding = await generateEmbedding(veryLongText);
-    
-    // Should return a valid embedding
-    expect(embedding).toBeDefined();
-    expect(Array.isArray(embedding)).toBe(true);
-    expect(embedding.length).toBe(1536); // OpenAI text-embedding-3-small dimension
+  it("should skip empty rows and whitespace-only rows", () => {
+    const csvContent = [
+      "id,nome,valor",
+      "1,Produto A,100",
+      ",,,",
+      "   ,  ,  ",
+      "2,Produto B,200",
+    ].join("\n");
+
+    const chunks = chunkSpreadsheet(csvContent);
+
+    expect(chunks.length).toBe(2);
+    expect(chunks[0]!.content).toContain("Produto A");
+    expect(chunks[1]!.content).toContain("Produto B");
   });
 
-  it("should handle CSV chunk content for embeddings", async () => {
-    // Simulate a single CSV chunk
-    const csvChunk = Array.from({ length: 50 }, (_, i) => 
-      `${i + 1},Escola ${i + 1},Rua ${i + 1},Cidade ${i + 1},SP,12345-678,11-9999-${i},escola${i}@example.com`
-    ).join("\n");
-
-    // Should process without errors
-    const embedding = await generateEmbedding(csvChunk);
-    
-    expect(embedding).toBeDefined();
-    expect(Array.isArray(embedding)).toBe(true);
-    expect(embedding.length).toBe(1536);
-  });
-
-  it("should detect CSV format correctly", () => {
-    // Create a larger CSV that will need multiple chunks
-    const csvHeader = "id,name,value,description";
-    const csvRows = Array.from({ length: 100 }, (_, i) => 
-      `${i + 1},test${i},${i * 100},Description for item ${i + 1} with some extra text to make it longer`
+  it("should format rows with column names for better retrieval", () => {
+    const content = formatSpreadsheetRowChunk(
+      "Vendas",
+      5,
+      ["id", "cliente", "valor"],
+      ["5", "ACME Ltda", "1500"]
     );
-    const csvData = [csvHeader, ...csvRows].join("\n");
-    const chunks = chunkText(csvData, 500, 50);
-    
-    // Should split by lines (CSV mode) and create multiple chunks
-    expect(chunks.length).toBeGreaterThan(1);
+
+    expect(content).toContain("Planilha: Vendas");
+    expect(content).toContain("Linha: 5");
+    expect(content).toContain("cliente: ACME Ltda");
+    expect(content).toContain("valor: 1500");
   });
 
-  it("should handle regular text (non-CSV) normally", () => {
+  it("should support multiple sheets from xlsx export format", () => {
+    const text = [
+      "=== Planilha: Sheet1 ===",
+      "id,nome",
+      "1,Alpha",
+      "2,Beta",
+      "",
+      "=== Planilha: Sheet2 ===",
+      "id,nome",
+      "10,Gamma",
+    ].join("\n");
+
+    const chunks = chunkSpreadsheet(text);
+
+    expect(chunks.length).toBe(3);
+    expect(chunks.some((c) => c.content.includes("Planilha: Sheet1"))).toBe(true);
+    expect(chunks.some((c) => c.content.includes("Planilha: Sheet2"))).toBe(true);
+  });
+
+  it("should parse quoted CSV fields", () => {
+    const line = '"nome, completo",email,"Rua A, 100"';
+    const cells = parseDelimitedLine(line, ",");
+
+    expect(cells[0]).toBe("nome, completo");
+    expect(cells[1]).toBe("email");
+    expect(cells[2]).toBe("Rua A, 100");
+  });
+
+  it("should reject invalid chunk content", () => {
+    expect(isValidChunkContent("   ")).toBe(false);
+    expect(isValidChunkContent(",,,,,")).toBe(false);
+    expect(isValidChunkContent("id: 1 | nome: Escola Municipal")).toBe(true);
+  });
+});
+
+describe("Prose chunking", () => {
+  it("should chunk regular text by paragraphs", () => {
     const regularText = `
-Primeiro parágrafo com algum conteúdo.
+Primeiro parágrafo com algum conteúdo relevante para busca.
 
-Segundo parágrafo com mais conteúdo.
+Segundo parágrafo com mais conteúdo descritivo.
 
 Terceiro parágrafo com ainda mais conteúdo.
     `.trim();
 
     const chunks = chunkText(regularText, 500, 50);
-    
-    // Should work normally for non-CSV text
+
     expect(chunks.length).toBeGreaterThan(0);
+    expect(chunks[0]!.metadata.chunkType).toBe("prose");
+  });
+});
+
+describe("Embedding limits", () => {
+  it("should truncate very long text for embeddings", async () => {
+    const veryLongText = "Lorem ipsum dolor sit amet. ".repeat(2000);
+
+    const embedding = await generateEmbedding(veryLongText);
+
+    expect(embedding).toBeDefined();
+    expect(Array.isArray(embedding)).toBe(true);
+    expect(embedding.length).toBe(1536);
+  });
+
+  it("should handle spreadsheet row chunk for embeddings", async () => {
+    const rowChunk = formatSpreadsheetRowChunk(
+      "Escolas",
+      1,
+      ["id", "nome", "cidade"],
+      ["1", "Escola Teste", "São Paulo"]
+    );
+
+    const embedding = await generateEmbedding(rowChunk);
+
+    expect(embedding).toBeDefined();
+    expect(embedding.length).toBe(1536);
   });
 });
