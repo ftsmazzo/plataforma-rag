@@ -976,138 +976,47 @@ export const appRouter = router({
   }),
 
   database: router({
-    stats: protectedProcedure
-      .query(async ({ ctx }) => {
-        if (ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN" });
-        }
-        const { drizzle } = await import("drizzle-orm/node-postgres");
-        const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-        const db = drizzle(pool);
-        const { organizations, users, knowledgeBases, apiKeys, documents, documentChunks, embeddings, apiLogs } = await import("../drizzle/schema");
-        const { sql } = await import("drizzle-orm");
-        
-        const statsResult: any = await db.execute(sql`
-          SELECT 
-            (SELECT COUNT(*) FROM ${organizations}) as organizations,
-            (SELECT COUNT(*) FROM ${users}) as users,
-            (SELECT COUNT(*) FROM ${knowledgeBases}) as knowledge_bases,
-            (SELECT COUNT(*) FROM ${apiKeys}) as api_keys,
-            (SELECT COUNT(*) FROM ${documents}) as documents,
-            (SELECT COUNT(*) FROM ${documentChunks}) as chunks,
-            (SELECT COUNT(*) FROM ${embeddings}) as embeddings,
-            (SELECT COUNT(*) FROM ${apiLogs}) as api_logs
-        `);
-        
-        const stats = statsResult[0][0];
-        
-        return {
-          organizations: stats.organizations,
-          users: stats.users,
-          knowledgeBases: stats.knowledge_bases,
-          apiKeys: stats.api_keys,
-          documents: stats.documents,
-          chunks: stats.chunks,
-          embeddings: stats.embeddings,
-          apiLogs: stats.api_logs,
-        };
-      }),
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const { getDatabasePanelStats } = await import("./db");
+      return getDatabasePanelStats();
+    }),
 
-    knowledgeBaseStats: protectedProcedure
-      .query(async ({ ctx }) => {
-        if (ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN" });
-        }
-        const { drizzle } = await import("drizzle-orm/node-postgres");
-        const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-        const db = drizzle(pool);
-        const { knowledgeBases, documents, documentChunks, embeddings } = await import("../drizzle/schema");
-        const { sql, eq } = await import("drizzle-orm");
-        
-        const bases = await db.select().from(knowledgeBases);
-        
-        const results = await Promise.all(bases.map(async (kb: any) => {
-          const docCountResult: any = await db.execute(sql`SELECT COUNT(*) as count FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kb.id}`);
-          const chunkCountResult: any = await db.execute(sql`SELECT COUNT(*) as count FROM ${documentChunks} WHERE ${documentChunks.knowledgeBaseId} = ${kb.id}`);
-          const embCountResult: any = await db.execute(sql`SELECT COUNT(*) as count FROM ${embeddings} WHERE ${embeddings.knowledgeBaseId} = ${kb.id}`);
-          
-          return {
-            id: kb.id,
-            name: kb.name,
-            isActive: kb.isActive === 1,
-            documentsCount: docCountResult[0][0].count,
-            chunksCount: chunkCountResult[0][0].count,
-            embeddingsCount: embCountResult[0][0].count,
-          };
-        }));
-        
-        return results;
-      }),
+    knowledgeBaseStats: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const { getKnowledgeBasesAdminStats } = await import("./db");
+      return getKnowledgeBasesAdminStats();
+    }),
+
+    apiKeysList: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const { getApiKeysForAdminPanel } = await import("./db");
+      return getApiKeysForAdminPanel();
+    }),
 
     recentApiLogs: protectedProcedure
-      .input(z.object({ 
-        limit: z.number().default(20),
-        knowledgeBaseId: z.number().optional(),
-        searchText: z.string().optional(),
-        dateFrom: z.string().optional(),
-        dateTo: z.string().optional(),
-      }))
+      .input(
+        z.object({
+          limit: z.number().default(20),
+          knowledgeBaseId: z.number().optional(),
+          apiKeyId: z.number().optional(),
+          searchText: z.string().optional(),
+          dateFrom: z.string().optional(),
+          dateTo: z.string().optional(),
+        })
+      )
       .query(async ({ ctx, input }) => {
         if (ctx.user.role !== "admin") {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        const { drizzle } = await import("drizzle-orm/node-postgres");
-        const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-        const db = drizzle(pool);
-        const { apiLogs, knowledgeBases } = await import("../drizzle/schema");
-        const { desc, eq, and, gte, lte, or, like } = await import("drizzle-orm");
-        
-        // Build where conditions
-        const conditions = [];
-        if (input.knowledgeBaseId) {
-          conditions.push(eq(apiLogs.knowledgeBaseId, input.knowledgeBaseId));
-        }
-        if (input.searchText) {
-          conditions.push(
-            or(
-              like(apiLogs.query, `%${input.searchText}%`),
-              like(apiLogs.answer, `%${input.searchText}%`)
-            )
-          );
-        }
-        if (input.dateFrom) {
-          conditions.push(gte(apiLogs.createdAt, new Date(input.dateFrom)));
-        }
-        if (input.dateTo) {
-          conditions.push(lte(apiLogs.createdAt, new Date(input.dateTo)));
-        }
-        
-        let query = db
-          .select({
-            id: apiLogs.id,
-            query: apiLogs.query,
-            answer: apiLogs.answer,
-            sourcesCount: apiLogs.sourcesCount,
-            responseTime: apiLogs.responseTime,
-            createdAt: apiLogs.createdAt,
-            knowledgeBaseId: apiLogs.knowledgeBaseId,
-            knowledgeBaseName: knowledgeBases.name,
-          })
-          .from(apiLogs)
-          .leftJoin(knowledgeBases, eq(apiLogs.knowledgeBaseId, knowledgeBases.id))
-          .orderBy(desc(apiLogs.createdAt))
-          .limit(input.limit);
-        
-        if (conditions.length > 0) {
-          query = query.where(and(...conditions)) as any;
-        }
-        
-        const logs = await query;
-        
-        return logs;
+        const { getRecentApiLogsDetailed } = await import("./db");
+        return getRecentApiLogsDetailed(input);
       }),
 
     getTableData: protectedProcedure
@@ -1129,10 +1038,11 @@ export const appRouter = router({
         if (ctx.user.role !== "admin") {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        const { drizzle } = await import("drizzle-orm/node-postgres");
-        const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-        const db = drizzle(pool);
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        }
         const schema = await import("../drizzle/schema");
         const { desc } = await import("drizzle-orm");
         
@@ -1173,10 +1083,11 @@ export const appRouter = router({
         if (ctx.user.role !== "admin") {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        const { drizzle } = await import("drizzle-orm/node-postgres");
-        const { Pool } = await import("pg");
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-        const db = drizzle(pool);
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        }
         const { documents, documentChunks, embeddings, apiLogs, apiKeys } = await import("../drizzle/schema");
         const { sql } = await import("drizzle-orm");
         

@@ -1,7 +1,7 @@
-import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { desc, eq, and, sql, inArray, gte, lte, or, like, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { InsertUser, User, users, documents, InsertDocument, Document, documentChunks, InsertDocumentChunk, DocumentChunk, embeddings, InsertEmbedding, Embedding, documentVersions, feedback, knowledgeBases, systemSettings } from "../drizzle/schema";
+import { InsertUser, User, users, documents, InsertDocument, Document, documentChunks, InsertDocumentChunk, DocumentChunk, embeddings, InsertEmbedding, Embedding, documentVersions, feedback, knowledgeBases, systemSettings, organizations, apiKeys, apiLogs } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 const { Pool } = pg;
@@ -1010,4 +1010,193 @@ export async function adminDeleteKnowledgeBase(kbId: number, organizationId: num
   );
 
   return { success: true };
+}
+
+function toInt(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  return Number(value);
+}
+
+/** Painel admin: contagens gerais das tabelas */
+export async function getDatabasePanelStats() {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const [
+    [orgCount],
+    [userCount],
+    [kbCount],
+    [keyCount],
+    [docCount],
+    [chunkCount],
+    [embCount],
+    [logCount],
+  ] = await Promise.all([
+    db.select({ count: count() }).from(organizations),
+    db.select({ count: count() }).from(users),
+    db.select({ count: count() }).from(knowledgeBases),
+    db.select({ count: count() }).from(apiKeys),
+    db.select({ count: count() }).from(documents),
+    db.select({ count: count() }).from(documentChunks),
+    db.select({ count: count() }).from(embeddings),
+    db.select({ count: count() }).from(apiLogs),
+  ]);
+
+  return {
+    organizations: toInt(orgCount?.count),
+    users: toInt(userCount?.count),
+    knowledgeBases: toInt(kbCount?.count),
+    apiKeys: toInt(keyCount?.count),
+    documents: toInt(docCount?.count),
+    chunks: toInt(chunkCount?.count),
+    embeddings: toInt(embCount?.count),
+    apiLogs: toInt(logCount?.count),
+  };
+}
+
+/** Painel admin: estatísticas por base de conhecimento */
+export async function getKnowledgeBasesAdminStats() {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const bases = await db
+    .select({
+      id: knowledgeBases.id,
+      name: knowledgeBases.name,
+      isActive: knowledgeBases.isActive,
+      organizationId: knowledgeBases.organizationId,
+      userId: knowledgeBases.userId,
+      createdAt: knowledgeBases.createdAt,
+    })
+    .from(knowledgeBases)
+    .orderBy(knowledgeBases.name);
+
+  const results = await Promise.all(
+    bases.map(async (kb) => {
+      const [[docRow], [chunkRow], [embRow], [logRow]] = await Promise.all([
+        db
+          .select({ count: count() })
+          .from(documents)
+          .where(eq(documents.knowledgeBaseId, kb.id)),
+        db
+          .select({ count: count() })
+          .from(documentChunks)
+          .where(eq(documentChunks.knowledgeBaseId, kb.id)),
+        db
+          .select({ count: count() })
+          .from(embeddings)
+          .where(eq(embeddings.knowledgeBaseId, kb.id)),
+        db
+          .select({ count: count() })
+          .from(apiLogs)
+          .where(eq(apiLogs.knowledgeBaseId, kb.id)),
+      ]);
+
+      return {
+        id: kb.id,
+        name: kb.name,
+        isActive: Boolean(kb.isActive),
+        organizationId: kb.organizationId,
+        userId: kb.userId,
+        createdAt: kb.createdAt,
+        documentsCount: toInt(docRow?.count),
+        chunksCount: toInt(chunkRow?.count),
+        embeddingsCount: toInt(embRow?.count),
+        apiQueriesCount: toInt(logRow?.count),
+      };
+    })
+  );
+
+  return results;
+}
+
+export interface ApiLogsFilter {
+  limit?: number;
+  knowledgeBaseId?: number;
+  apiKeyId?: number;
+  searchText?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** Painel admin: logs de API com base, chave e usuário */
+export async function getRecentApiLogsDetailed(filters: ApiLogsFilter = {}) {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const conditions = [];
+  if (filters.knowledgeBaseId) {
+    conditions.push(eq(apiLogs.knowledgeBaseId, filters.knowledgeBaseId));
+  }
+  if (filters.apiKeyId) {
+    conditions.push(eq(apiLogs.apiKeyId, filters.apiKeyId));
+  }
+  if (filters.searchText?.trim()) {
+    const term = `%${filters.searchText.trim()}%`;
+    conditions.push(or(like(apiLogs.query, term), like(apiLogs.answer, term)));
+  }
+  if (filters.dateFrom) {
+    conditions.push(gte(apiLogs.createdAt, new Date(`${filters.dateFrom}T00:00:00`)));
+  }
+  if (filters.dateTo) {
+    conditions.push(lte(apiLogs.createdAt, new Date(`${filters.dateTo}T23:59:59`)));
+  }
+
+  const limit = filters.limit ?? 20;
+
+  const logs = await db
+    .select({
+      id: apiLogs.id,
+      query: apiLogs.query,
+      answer: apiLogs.answer,
+      sourcesCount: apiLogs.sourcesCount,
+      responseTime: apiLogs.responseTime,
+      createdAt: apiLogs.createdAt,
+      knowledgeBaseId: apiLogs.knowledgeBaseId,
+      knowledgeBaseName: knowledgeBases.name,
+      apiKeyId: apiLogs.apiKeyId,
+      apiKeyName: apiKeys.name,
+      userId: apiLogs.userId,
+      userEmail: users.email,
+      organizationId: apiLogs.organizationId,
+    })
+    .from(apiLogs)
+    .leftJoin(knowledgeBases, eq(apiLogs.knowledgeBaseId, knowledgeBases.id))
+    .leftJoin(apiKeys, eq(apiLogs.apiKeyId, apiKeys.id))
+    .leftJoin(users, eq(apiLogs.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(apiLogs.createdAt))
+    .limit(limit);
+
+  return logs.map((log) => ({
+    ...log,
+    knowledgeBaseName: log.knowledgeBaseName || `Base #${log.knowledgeBaseId}`,
+    apiKeyName: log.apiKeyName || `Chave #${log.apiKeyId}`,
+    userEmail: log.userEmail || `Usuário #${log.userId}`,
+  }));
+}
+
+/** Lista API keys para filtros do painel */
+export async function getApiKeysForAdminPanel() {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  return db
+    .select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      isActive: apiKeys.isActive,
+      organizationId: apiKeys.organizationId,
+      lastUsedAt: apiKeys.lastUsedAt,
+    })
+    .from(apiKeys)
+    .orderBy(apiKeys.name);
 }
