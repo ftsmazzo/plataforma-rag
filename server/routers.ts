@@ -56,7 +56,7 @@ import {
 } from "./db-organizations";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
-import { processDocument, generateEmbedding, cosineSimilarity, generateTags } from "./documentProcessor";
+import { processDocument, generateEmbedding, generateEmbeddingsBatch, cosineSimilarity, generateTags } from "./documentProcessor";
 import { notifyOwner } from "./_core/notification";
 import { generateCSV, formatDocumentsForExport, formatFeedbackForExport, formatAnalyticsForExport } from "./export";
 
@@ -1275,34 +1275,60 @@ async function processDocumentAsync(
     const chunks = await processDocument(buffer, fileType, mimeType);
     console.log(`[ProcessDocument] Successfully extracted ${chunks.length} chunks from document ${documentId}`);
     
+    const savedChunks: Awaited<ReturnType<typeof createChunk>>[] = [];
     for (const chunk of chunks) {
-      const savedChunk = await createChunk({
-        documentId,
+      savedChunks.push(
+        await createChunk({
+          documentId,
+          userId,
+          organizationId,
+          knowledgeBaseId,
+          chunkIndex: chunk.metadata.chunkIndex,
+          content: chunk.content,
+          metadata: JSON.stringify(chunk.metadata),
+          tokenCount: chunk.tokenCount,
+        })
+      );
+    }
+
+    const EMBED_BATCH = 64;
+    for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+      const sliceEnd = Math.min(i + EMBED_BATCH, chunks.length);
+      const batchChunks = chunks.slice(i, sliceEnd);
+      const batchSaved = savedChunks.slice(i, sliceEnd);
+
+      const embeddings = await generateEmbeddingsBatch(
+        batchChunks.map((c) => c.content),
         userId,
-        organizationId,
-        knowledgeBaseId,
-        chunkIndex: chunk.metadata.chunkIndex,
-        content: chunk.content,
-        metadata: JSON.stringify(chunk.metadata),
-        tokenCount: chunk.tokenCount,
-      });
-      
-      const embedding = await generateEmbedding(chunk.content, userId, organizationId);
-      
-      // Ensure embedding is an array
-      if (!Array.isArray(embedding)) {
-        throw new Error(`Invalid embedding format: expected array, got ${typeof embedding}`);
+        organizationId
+      );
+
+      if (embeddings.length !== batchSaved.length) {
+        throw new Error(
+          `Embedding count mismatch: expected ${batchSaved.length}, got ${embeddings.length}`
+        );
       }
-      
-      await createEmbedding({
-        chunkId: savedChunk.id,
-        documentId,
-        userId,
-        organizationId,
-        knowledgeBaseId,
-        embedding: embedding, // Pass array directly, not JSON string
-        embeddingModel: "text-embedding-3-small",
-      });
+
+      for (let j = 0; j < batchSaved.length; j++) {
+        const embedding = embeddings[j];
+        if (!Array.isArray(embedding)) {
+          throw new Error(`Invalid embedding format at index ${i + j}`);
+        }
+
+        await createEmbedding({
+          chunkId: batchSaved[j]!.id,
+          documentId,
+          userId,
+          organizationId,
+          knowledgeBaseId,
+          embedding,
+          embeddingModel: "text-embedding-3-small",
+        });
+      }
+
+      console.log(
+        `[ProcessDocument] Embeddings saved: ${sliceEnd}/${chunks.length} (document ${documentId})`
+      );
     }
     
     await updateDocumentStatus(documentId, "completed", undefined, chunks.length);

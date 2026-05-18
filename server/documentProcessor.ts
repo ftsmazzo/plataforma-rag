@@ -479,55 +479,69 @@ export async function processDocument(
   }
 }
 
-/**
- * Generate embeddings using configured provider (OpenAI or Ollama)
- */
-export async function generateEmbedding(text: string, userId?: number, organizationId?: number): Promise<number[]> {
-  const MAX_EMBEDDING_CHARS = 30000;
-  const truncatedText = text.length > MAX_EMBEDDING_CHARS
-    ? text.slice(0, MAX_EMBEDDING_CHARS) + "...[truncated]"
-    : text;
+const MAX_EMBEDDING_CHARS = 30000;
+const EMBEDDING_BATCH_SIZE = 64;
+const EMBEDDING_MAX_RETRIES = 5;
+const EMBEDDING_MODEL = "text-embedding-3-small";
 
-  if (text.length > MAX_EMBEDDING_CHARS) {
-    console.log(`[Embeddings] Truncated text from ${text.length} to ${truncatedText.length} characters`);
-  }
+function truncateForEmbedding(text: string): string {
+  if (text.length <= MAX_EMBEDDING_CHARS) return text;
+  console.log(`[Embeddings] Truncated text from ${text.length} to ${MAX_EMBEDDING_CHARS} characters`);
+  return text.slice(0, MAX_EMBEDDING_CHARS) + "...[truncated]";
+}
 
-  let settings = null;
-  if (userId && organizationId) {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  const cause = (error as { cause?: { code?: string } }).cause;
+  const retryableCodes = ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EAI_AGAIN"];
+  if (cause?.code && retryableCodes.includes(cause.code)) return true;
+  return msg.includes("fetch failed") || msg.includes("timeout") || msg.includes("429");
+}
+
+async function withEmbeddingRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= EMBEDDING_MAX_RETRIES; attempt++) {
     try {
-      const { getSystemSettings } = await import("./db");
-      settings = await getSystemSettings(userId, organizationId);
+      return await fn();
     } catch (error) {
-      console.warn("[Embeddings] Could not load settings, using OpenAI:", error);
+      lastError = error;
+      if (!isRetryableFetchError(error) || attempt === EMBEDDING_MAX_RETRIES) {
+        throw error;
+      }
+      const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30000);
+      console.warn(
+        `[Embeddings] ${label} attempt ${attempt}/${EMBEDDING_MAX_RETRIES} failed, retrying in ${delayMs}ms:`,
+        error instanceof Error ? error.message : error
+      );
+      await sleep(delayMs);
     }
   }
+  throw lastError;
+}
 
-  if (settings?.llmProvider === "ollama" && settings.ollamaBaseUrl) {
-    try {
-      const { generateOllamaEmbedding, DEFAULT_OLLAMA_CONFIG } = await import("./ollama");
-      const config = {
-        ...DEFAULT_OLLAMA_CONFIG,
-        baseUrl: settings.ollamaBaseUrl,
-        embeddingModel: settings.ollamaEmbeddingModel || DEFAULT_OLLAMA_CONFIG.embeddingModel,
-      };
-
-      console.log("[Embeddings] Using Ollama:", config.baseUrl, "model:", config.embeddingModel);
-      const embedding = await generateOllamaEmbedding(truncatedText, config);
-      console.log("[Embeddings] Ollama success - embedding dimension:", embedding.length);
-      return embedding;
-    } catch (error) {
-      console.error("[Embeddings] Ollama failed:", error);
-      throw new Error(`Ollama embedding failed: ${error instanceof Error ? error.message : String(error)}. Please check your Ollama server or switch to OpenAI in settings.`);
-    }
+async function loadEmbeddingSettings(userId?: number, organizationId?: number) {
+  if (!userId || !organizationId) return null;
+  try {
+    const { getSystemSettings } = await import("./db");
+    return await getSystemSettings(userId, organizationId);
+  } catch (error) {
+    console.warn("[Embeddings] Could not load settings, using OpenAI:", error);
+    return null;
   }
+}
 
+async function fetchOpenAIEmbeddingsBatch(inputs: string[]): Promise<number[][]> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY not configured");
   }
 
-  try {
-    console.log("[Embeddings] Using OpenAI (model: text-embedding-3-small)");
+  return withEmbeddingRetry(`OpenAI batch (${inputs.length})`, async () => {
     const response = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
@@ -535,8 +549,8 @@ export async function generateEmbedding(text: string, userId?: number, organizat
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "text-embedding-3-small",
-        input: truncatedText,
+        model: EMBEDDING_MODEL,
+        input: inputs,
       }),
     });
 
@@ -546,13 +560,77 @@ export async function generateEmbedding(text: string, userId?: number, organizat
     }
 
     const data = await response.json();
-    const embedding = data.data[0].embedding;
-    console.log("[Embeddings] OpenAI success - embedding dimension:", embedding.length);
-    return embedding;
-  } catch (error) {
-    console.error("[Embeddings] Error generating embedding:", error);
-    throw error;
+    const sorted = [...data.data].sort(
+      (a: { index: number }, b: { index: number }) => a.index - b.index
+    );
+    return sorted.map((item: { embedding: number[] }) => item.embedding);
+  });
+}
+
+/**
+ * Generate embeddings for many texts in batches (OpenAI) or sequentially (Ollama)
+ */
+export async function generateEmbeddingsBatch(
+  texts: string[],
+  userId?: number,
+  organizationId?: number
+): Promise<number[][]> {
+  if (texts.length === 0) return [];
+
+  const truncated = texts.map(truncateForEmbedding);
+  const settings = await loadEmbeddingSettings(userId, organizationId);
+
+  if (settings?.llmProvider === "ollama" && settings.ollamaBaseUrl) {
+    const { generateOllamaEmbedding, DEFAULT_OLLAMA_CONFIG } = await import("./ollama");
+    const config = {
+      ...DEFAULT_OLLAMA_CONFIG,
+      baseUrl: settings.ollamaBaseUrl,
+      embeddingModel: settings.ollamaEmbeddingModel || DEFAULT_OLLAMA_CONFIG.embeddingModel,
+    };
+
+    console.log(`[Embeddings] Ollama sequential: ${truncated.length} texts`);
+    const results: number[][] = [];
+    for (let i = 0; i < truncated.length; i++) {
+      const embedding = await withEmbeddingRetry(`Ollama item ${i + 1}`, () =>
+        generateOllamaEmbedding(truncated[i]!, config)
+      );
+      results.push(embedding);
+      if ((i + 1) % 25 === 0 || i === truncated.length - 1) {
+        console.log(`[Embeddings] Ollama progress: ${i + 1}/${truncated.length}`);
+      }
+    }
+    return results;
   }
+
+  const results: number[][] = [];
+  for (let i = 0; i < truncated.length; i += EMBEDDING_BATCH_SIZE) {
+    const batch = truncated.slice(i, i + EMBEDDING_BATCH_SIZE);
+    const batchEmbeddings = await fetchOpenAIEmbeddingsBatch(batch);
+    results.push(...batchEmbeddings);
+    console.log(
+      `[Embeddings] OpenAI batch progress: ${Math.min(i + batch.length, truncated.length)}/${truncated.length}`
+    );
+    if (i + EMBEDDING_BATCH_SIZE < truncated.length) {
+      await sleep(200);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Generate a single embedding (queries, tests)
+ */
+export async function generateEmbedding(
+  text: string,
+  userId?: number,
+  organizationId?: number
+): Promise<number[]> {
+  const [embedding] = await generateEmbeddingsBatch([text], userId, organizationId);
+  if (!embedding) {
+    throw new Error("Failed to generate embedding");
+  }
+  return embedding;
 }
 
 /**

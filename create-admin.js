@@ -1,15 +1,13 @@
-// Script Node.js para criar um usuário admin
+// Script Node.js para criar um usuário admin (sem dependência de drizzle compilado)
 // Execute: node create-admin.js
 
 import bcrypt from "bcryptjs";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { pg } from "pg";
-import { users, organizations } from "./drizzle/schema.js";
-import { eq } from "drizzle-orm";
+import pg from "pg";
 import dotenv from "dotenv";
 
 dotenv.config();
 
+const { Pool } = pg;
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
@@ -17,7 +15,6 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-// Configuração do admin
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const ADMIN_NAME = process.env.ADMIN_NAME || "Administrador";
@@ -25,61 +22,53 @@ const ADMIN_NAME = process.env.ADMIN_NAME || "Administrador";
 async function createAdmin() {
   console.log("🚀 Criando usuário admin...");
 
-  try {
-    // Conectar ao banco
-    const pool = new pg.Pool({
-      connectionString: DATABASE_URL,
-    });
-    const db = drizzle(pool);
+  const pool = new Pool({ connectionString: DATABASE_URL });
 
-    // Verificar ou criar organização padrão
-    let org = await db.select().from(organizations).where(eq(organizations.slug, "default")).limit(1);
-    
+  try {
+    const orgResult = await pool.query(
+      `SELECT id FROM organizations WHERE slug = $1 LIMIT 1`,
+      ["default"]
+    );
+
     let orgId;
-    if (org.length === 0) {
+    if (orgResult.rows.length === 0) {
       console.log("📝 Criando organização padrão...");
-      const [newOrg] = await db.insert(organizations).values({
-        name: "Organização Padrão",
-        slug: "default",
-        description: "Organização padrão do sistema",
-        isActive: true,
-      }).returning();
-      orgId = newOrg.id;
+      const insertOrg = await pool.query(
+        `INSERT INTO organizations (name, slug, description, "isActive")
+         VALUES ($1, $2, $3, true)
+         RETURNING id`,
+        ["Organização Padrão", "default", "Organização padrão do sistema"]
+      );
+      orgId = insertOrg.rows[0].id;
       console.log(`✅ Organização criada com ID: ${orgId}`);
     } else {
-      orgId = org[0].id;
+      orgId = orgResult.rows[0].id;
       console.log(`✅ Usando organização existente com ID: ${orgId}`);
     }
 
-    // Hash da senha
     const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
-    // Verificar se usuário já existe
-    const existingUser = await db.select().from(users).where(eq(users.email, ADMIN_EMAIL)).limit(1);
+    const userResult = await pool.query(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [ADMIN_EMAIL]
+    );
 
-    if (existingUser.length > 0) {
-      // Atualizar usuário existente para admin
-      await db.update(users)
-        .set({
-          password: hashedPassword,
-          role: "admin",
-          organizationId: orgId,
-        })
-        .where(eq(users.email, ADMIN_EMAIL));
-      
+    if (userResult.rows.length > 0) {
+      await pool.query(
+        `UPDATE users SET password = $1, role = 'admin', "organizationId" = $2, "updatedAt" = NOW()
+         WHERE email = $3`,
+        [hashedPassword, orgId, ADMIN_EMAIL]
+      );
       console.log("✅ Usuário existente atualizado para admin!");
     } else {
-      // Criar novo usuário admin
-      const [newUser] = await db.insert(users).values({
-        email: ADMIN_EMAIL,
-        password: hashedPassword,
-        name: ADMIN_NAME,
-        role: "admin",
-        organizationId: orgId,
-      }).returning();
-
+      const insertUser = await pool.query(
+        `INSERT INTO users (email, password, name, role, "organizationId")
+         VALUES ($1, $2, $3, 'admin', $4)
+         RETURNING id`,
+        [ADMIN_EMAIL, hashedPassword, ADMIN_NAME, orgId]
+      );
       console.log("✅ Usuário admin criado com sucesso!");
-      console.log(`   ID: ${newUser.id}`);
+      console.log(`   ID: ${insertUser.rows[0].id}`);
     }
 
     console.log("\n📋 Credenciais do Admin:");
@@ -91,6 +80,7 @@ async function createAdmin() {
     process.exit(0);
   } catch (error) {
     console.error("❌ Erro ao criar admin:", error);
+    await pool.end();
     process.exit(1);
   }
 }

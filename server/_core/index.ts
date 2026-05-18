@@ -32,6 +32,11 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ ok: true, timestamp: Date.now() });
+  });
+
   // Public REST API for external integrations
   const apiRoutes = await import("../api-routes");
   app.use("/api", apiRoutes.default);
